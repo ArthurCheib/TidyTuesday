@@ -29,12 +29,11 @@ Defining the scope of analysis:
 
 
 ```{r fig.width= 8, fig.height = 5}
-thx_escope <- thanks_dataset %>% 
+thx_scope <- thanks_dataset %>% 
   select(1,2, pie1:pie13, prayer, age, family_income) %>%
   filter(celebrate == "Yes")
 
-thx_table <- thx_escope %>% 
-  select(prayer, family_income) %>%
+thx_table <- thx_scope %>%
   group_by(prayer, family_income) %>% 
   summarize(TOTAL = n()) %>%
   na.omit() %>%
@@ -60,13 +59,14 @@ thx_table %>%
        subtitle = "Displayed by family combined income",
        y = "",
        x = "") +
-  theme(legend.position = "none",
-        plot.title = element_text( size = 14))
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 14),
+        plot.title = element_text( size = 16))
 
 ```
 
 ```{r}
-thx_escope %>% 
+thx_scope %>% 
   select(-prayer, - family_income, -celebrate) %>% 
   gather(key = pies, value = types, -age, -id) %>%
   na.omit() %>% 
