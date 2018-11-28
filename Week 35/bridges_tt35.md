@@ -1,0 +1,121 @@
+TidyTuesday35 - Maryland Bridges
+================
+Arthur Cheib
+
+``` r
+library(tidyverse)
+library(ggthemes)
+library(carbonate)
+```
+
+Read and summary file
+
+``` r
+url <- "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018-11-27/baltimore_bridges.csv"
+
+bridges_df <- read_csv(url)
+```
+
+Defining the features of analysis: \* Responsibility \* Total improvement costs in thousands of dollars \* Bridge condition (Poor, Fair, Good)
+
+``` r
+bridges_df_new <- bridges_df %>% 
+  mutate(n_responsibility = case_when(responsibility == "City or Municipal Highway Agency" ~ "County",
+                                responsibility == "County Highway Agency" ~ "County",
+                                responsibility == "Other Local Agencies" ~ "County",
+                                responsibility == "Town or Township Highway Agency" ~ "County",
+                                responsibility == "State Highway Agency" ~ "State",
+                                responsibility == "State Toll Authority" ~ "State",
+                                responsibility == "Other State Agencies"~ "State"),
+         decade_built = yr_built - yr_built %% 10) %>% 
+  filter(decade_built > 1900) %>% 
+  select(county, bridge_condition, n_responsibility, avg_daily_traffic, total_improve_cost_thousands, decade_built, inspection_yr) %>% 
+  group_by(n_responsibility, decade_built) %>%
+  summarize(total_bridges = n(),
+            total_spent_in_improvement = sum(total_improve_cost_thousands, na.rm = T),
+            avg_traffic_per_bridge = mean(avg_daily_traffic, na.rm = T)) %>% na.omit()
+  
+bridges_df_new %>% 
+    select(n_responsibility, total_spent_in_improvement, decade_built) %>% 
+    spread(key = n_responsibility, value = total_spent_in_improvement) %>%
+    mutate(abs_per_decade = County + State,
+           percent_county_decade = round((County/abs_per_decade), digits = 2),
+           percent_state_decade = round(1 - percent_county_decade, digits = 2)) %>% 
+    select(-abs_per_decade) %>% 
+    gather(percents, values_percent, -County, -State, -decade_built) %>% 
+    gather(n_responsibility, total_spent_in_improvement, -decade_built, -percents, -values_percent) %>% 
+    filter(percents == "percent_county_decade" & n_responsibility == "County" |
+           percents == "percent_state_decade" & n_responsibility == "State") %>% 
+    select(-percents) %>%  
+  ggplot(aes(as.factor(decade_built), values_percent, fill = n_responsibility)) +
+  geom_col(position = "fill") +
+  theme_solarized() +
+  labs(title = "PERCENTAGE AND TOTAL IMPROVEMENT COSTS WITH BRIDGES",
+       subtitle = "STATE vs. COUNTY - numbers in thousands of dollars",
+       y = "Percentage",
+       x = "") +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 14),
+        plot.title = element_text( size = 16)) +
+  geom_text(aes(label = str_c("$", format(total_spent_in_improvement, big.mark = ","))), position = position_stack(vjust = 0.5)) +
+  scale_fill_discrete(name="Responsibility")
+```
+
+![](bridges_tt35_files/figure-markdown_github/unnamed-chunk-3-1.png)
+
+Second plot:
+
+``` r
+bridges_df_new_second <- bridges_df_new %>%
+  select(n_responsibility, total_bridges, decade_built)
+  
+
+right_label <- bridges_df_new_second %>%
+  group_by(decade_built) %>%
+  arrange(desc(total_bridges)) %>% 
+  slice(1)
+
+left_label <- bridges_df_new_second %>%
+  group_by(decade_built) %>%
+  arrange(desc(total_bridges)) %>% 
+  slice(2)
+
+big_diff <- bridges_df_new_second %>% 
+  spread(n_responsibility, total_bridges) %>% 
+        group_by(decade_built) %>% 
+        mutate(Max = max(State, County),
+               Min = min(State, County),
+               Diff = Max / Min - 1) %>% 
+        arrange(desc(Diff)) %>%
+        filter(Diff > .2)
+
+right_label <- filter(right_label, decade_built %in% big_diff$decade_built)
+left_label <- filter(left_label, decade_built %in% big_diff$decade_built)
+
+highligth_labels <- filter(bridges_df_new_second, decade_built %in% big_diff$decade_built)
+
+plot_label <- big_diff %>%
+    select(decade_built, total_bridges = Max, Diff) %>%
+    right_join(right_label)
+```
+
+    ## Joining, by = c("decade_built", "total_bridges")
+
+``` r
+bridges_df_new_second %>%
+  ggplot(aes(total_bridges, as.factor(decade_built))) +
+  geom_point(aes(color = n_responsibility), size = 2) +
+  geom_line(size = 0.85) +
+  geom_point(data = highligth_labels, aes(color = n_responsibility), size = 2) +
+  geom_line(data = highligth_labels, aes(group = decade_built)) +
+  geom_text(data = plot_label, aes(color = n_responsibility, 
+                                         label = paste0("+", scales::percent(round(Diff, 2)))),
+                  size = 3, hjust = -.5) +
+  theme_solarized() +
+  labs(title = "DIFFERENCE OF THE TOTAL AMOUNT OF BRIDGES BUILT",
+       subtitle = "STATE vs. COUNTY - by decade",
+       y = "",
+       x = "Amount of Bridges")
+```
+
+![](bridges_tt35_files/figure-markdown_github/unnamed-chunk-4-1.png)
