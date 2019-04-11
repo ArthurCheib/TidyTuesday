@@ -1,0 +1,75 @@
+---
+title: "Week 15 - Tennis"
+author: "Arthur Cheib"
+date: "10 de abril de 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages and data
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+
+grand_slams <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-04-09/grand_slams.csv")
+
+grand_slam_timeline <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-04-09/grand_slam_timeline.csv")
+
+```
+
+
+## PLOT
+
+```{r}
+outcome_wanted <- c("Finalist", "Won")
+
+base_data <- grand_slam_timeline %>% 
+  filter(outcome %in% outcome_wanted,
+         gender == "Female") %>%
+  group_by(player, outcome) %>% 
+  summarize(finals_participations = as.numeric(n())) %>% ungroup() %>% 
+  spread(outcome, finals_participations, fill = 0) %>% 
+  mutate(finals_participations = (Won + Finalist),
+         victories = Won,
+         win_rate = round(victories/finals_participations*100, digits = 2)) %>% 
+  select(-Won, -Finalist) %>% 
+  filter(win_rate > 0,
+         finals_participations >= 8)
+
+
+mean_rate <- paste0(round(mean(base_data$win_rate), digits = 0), "%")
+
+ggplot(base_data, aes(x = win_rate, y = finals_participations, label = player)) +
+  theme_light() +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 40)) +
+  labs(title = "Tennis's Magic Quadrant - Most decisive Female players in Tennis History",
+       subtitle = "Tennis players with more than 8 Grand Slams Finals appearance",
+       x="WINNING RATE IN FINALS (%)",
+       y="# FINALS APPEARANCE") + 
+  theme(axis.title.x = element_text(hjust = 0, vjust=2.5, colour="darkgrey",size=10,face="bold"),
+        axis.title.y = element_text(hjust = 0, vjust=0, colour="darkgrey",size=10,face="bold")) +
+  theme(panel.border = element_rect(colour = "lightgrey", fill=NA, size=4)) +
+  geom_hline(yintercept=20, color = "lightgrey", size=1.5) +
+  geom_vline(xintercept=mean(base_data$win_rate), size = 1, color = "orange", linetype = "longdash") +
+  geom_vline(xintercept=50, color = "lightgrey", size=1.5) +
+  geom_label(aes(x = 25, y = 38, label = "CALLENGERS"), 
+                    label.padding = unit(2, "mm"),  fill = "red", color="white") +
+  geom_label(aes(x = 75, y = 38, label = "LEADERS"), 
+                    label.padding = unit(2, "mm"), fill = "lightgreen", color="white") +
+  geom_label(aes(x = 25, y = 2, label = "NICHE PLAYERS"), 
+                    label.padding = unit(2, "mm"),  fill = "lightgrey", color="white") +
+  geom_label(aes(x = 75, y = 2, label = "VISIONARIES"), 
+                    label.padding = unit(2, "mm"), fill = "lightblue", color="white") +
+  geom_point(colour=ifelse(base_data$win_rate >= 50 & base_data$finals_participations >=17, "green", "#2896BA"), size=4.5, alpha=0.8) +
+  geom_text_repel(colour="#2896BA") +
+  geom_text(aes(x=50, y = 25), label = paste0("Mean \n Win Rate:\n", mean_rate), color="orange")
+
+ggsave(filename = "Gartner_magic_Players_02.jpg", width=15, height=10, units="cm", scale=1.6)
+
+```
+
