@@ -1,0 +1,182 @@
+---
+title: 'NYC Squirrel Census - #TidyTuesday'
+author: "Arthur Cheib"
+date: "14/11/2019"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(statebins)
+library(cowplot)
+library(lubridate)
+library(showtext)
+library(hrbrthemes)
+library(RColorBrewer)
+library(ggthemes)
+library(ggrepel)
+
+font_add_google("Staatliches")
+font_add_google("Oswald")
+font_add_google("Montserrat", regular.wt = 300, bold.wt = 500)
+```
+
+## Get the data
+
+```{r}
+tb_lifts <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-10-08/ipf_lifts.csv") %>% 
+  mutate(year2 = year(date))
+
+```
+
+## Question 01:
+
+1) What was the evolution of the max lifted weigth over the years on bench and deadlift categories (divided by sex and desconsidering the weight class division)? 
+
+```{r}
+final_plot1 <- tb_lifts %>%
+  group_by(year(date), sex) %>% 
+  summarize(MAX_BENCH = max(best3bench_kg, na.rm = T),
+            MAX_DEADLIFT = max(best3deadlift_kg, na.rm = T)) %>% 
+  ungroup() %>% 
+  rename("year" = `year(date)`,
+         "Sex" = "sex") %>%
+  arrange(Sex, year) %>%
+  gather(key = class_type, value = weight_lifed, -year, -Sex) %>% 
+  mutate(class_type = fct_recode(class_type, "BENCH CATEGORY" = "MAX_BENCH")) %>% 
+  mutate(class_type = fct_recode(class_type, "DEADLIFT CATEGORY" = "MAX_DEADLIFT")) %>%
+  ggplot(aes(x = year, y = weight_lifed, group = Sex, color = Sex)) +
+  geom_line(size = 1.25) +
+  facet_wrap(~class_type) +
+  theme_wsj() +
+  geom_point(shape = 21, color = "white", fill = "#69b3a2", size = 3) +
+  labs(title = "How stronger have we become?",
+       subtitle = "An evolution of the maximum weight lifted over the years - kg") +
+  ylim(100, 450) +
+  theme(legend.position = "top",
+        plot.title = element_text(size = 20),
+        plot.subtitle = element_text(size = 16),
+        plot.caption = element_text(size = 12)) 
+
+
+final_plot1
+
+```
+
+## Question 02:
+
+1) Which weigth category presented the greatest prop evolution in the max lifted weigth over the years on bench and deadlift? 
+
+```{r}
+### Discovering and considering only the weigth classes that appeared over the last five decades of competition:
+all_five_year_appearance <- tb_lifts %>%
+  mutate(half_decade = year(date) - year(date) %% 5) %>%
+  count(half_decade, weight_class_kg) %>%
+  count(weight_class_kg, sort = T) %>% 
+  filter(n > 8) %>% 
+  pull(weight_class_kg)
+
+### Treating data
+tb_quest2 <- tb_lifts %>%
+  filter(weight_class_kg %in% all_five_year_appearance) %>%
+  mutate(half_decade = year(date) - year(date) %% 5) %>%
+  group_by(half_decade, sex, weight_class_kg) %>% 
+  summarize(MAX_BENCH = max(best3bench_kg, na.rm = T),
+            MAX_DEADLIFT = max(best3deadlift_kg, na.rm = T)) %>% 
+  ungroup() %>% 
+  arrange(half_decade, sex) %>%
+  mutate(PROP_MAX_BENCH = round(as.numeric(MAX_BENCH)/as.numeric(weight_class_kg), digits = 2),
+         PROP_MAX_DEADLIFT = round(as.numeric(MAX_DEADLIFT)/as.numeric(weight_class_kg), digits = 2)) %>% 
+  select(-MAX_BENCH, -MAX_DEADLIFT) %>% 
+  gather(key = exercise_type, value = prop_weight_lifed, -half_decade, -sex, -weight_class_kg)
+
+
+### Creating a mean weight lifted for faceting
+mean_weight <- tb_quest2 %>%
+  filter(exercise_type == "PROP_MAX_BENCH") %>% 
+  group_by(weight_class_kg) %>% 
+  summarize(prop_weight_lifed = mean(prop_weight_lifed)) %>% 
+  ungroup()
+
+mean_weight2 <- tb_quest2 %>%
+  filter(exercise_type == "PROP_MAX_BENCH") %>% 
+  group_by(weight_class_kg) %>% 
+  summarize(prop_weight_lifed = mean(prop_weight_lifed)) %>% 
+  ungroup() %>% 
+  as_tibble() %>% 
+  mutate(sex = "F") %>% 
+  bind_rows(tb_quest2 %>%
+  filter(exercise_type == "PROP_MAX_BENCH") %>% 
+  group_by(weight_class_kg) %>% 
+  summarize(prop_weight_lifed = mean(prop_weight_lifed)) %>% 
+  ungroup() %>% 
+  as_tibble() %>% 
+  mutate(sex = "M"))
+
+### Plotting Bench Max
+tb_quest2 %>%
+  filter(half_decade != 2015) %>% 
+  filter(exercise_type == "PROP_MAX_BENCH") %>%
+  mutate(weight_class_kg_f = factor(x = weight_class_kg,
+                                  levels = c("52", "56", "60", "67.5", "75", "82.5", "90", "100", "110"))) %>% 
+  arrange(half_decade, weight_class_kg) %>% 
+  ggplot(aes(x = half_decade, y = prop_weight_lifed, color = sex)) +
+  geom_line(size = 1.25) +
+  facet_wrap(~weight_class_kg, scales = "free_y") +
+  theme_ipsum() +
+  geom_point(shape = 21, color = "white", fill = "#69b3a2", size = 3) +
+  ggtitle(label = "Evolution of Weigth Records across the Years",
+          subtitle = "by weight categories") +
+  ylim(1, 5) +
+  scale_x_continuous(name = "# Each 5 Years", breaks = seq(1970, 2015, by = 5)) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(aes(yintercept = prop_weight_lifed), mean_weight,
+             colour = "orange",
+             size = 0.8,
+             linetype = "dashed") +
+  geom_text(aes(x = 1980, y = 2, label = str_c(round(prop_weight_lifed, digits = 2), "x Weight's Class \n(Mean)")),
+                data = mean_weight2,
+                vjust = -1, colour = "orange")
+
+
+```
+
+## Question 03:
+
+1) Is there any championship in which we can expect to watch world records on Bench type competition?
+
+```{r}
+
+tb_lifts %>%
+  mutate(half_decade = year(date) - year(date) %% 5) %>%
+  group_by(half_decade, sex) %>% 
+  summarize(MAX_BENCH = max(best3bench_kg, na.rm = T)) %>% 
+  ungroup() %>% 
+  arrange(sex, half_decade) %>%
+  left_join(tb_lifts %>% 
+              select(sex, best3bench_kg, year2, meet_name),
+            by = c("sex", "MAX_BENCH" = "best3bench_kg")) %>% 
+  arrange(year2) %>% 
+  group_by(half_decade, sex) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  select(-year2) %>% 
+  ggplot(aes(x = half_decade, y = MAX_BENCH, label = meet_name)) +
+  geom_point(size = 3) +
+  geom_label_repel(aes(fill = factor(sex)), colour = "#D1E5F0", fontface = "bold") +
+  theme_modern_rc() +
+  labs(title = "In which competitions world's records are broken?",
+       subtitle = "... in world competitions (mostly)",
+       x = "",
+       y = "Lifted Weight (Kg)",
+       caption = "#TidyTuesday post by @Arthur Cheib  |  Data from Open Powerlifting.") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 20),
+        plot.subtitle = element_text(size = 16),
+        plot.caption = element_text(size = 12)) +
+  ylim(100, 450)
+
+```

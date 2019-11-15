@@ -1,2 +1,0 @@
-"0","url <- ""https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018-11-20/thanksgiving_meals.csv"""
-"0","thanks_dataset <- read_csv(url)"
